@@ -2,7 +2,7 @@ terraform {
   backend "s3" {
     bucket                      = "todo-terraform-bucket"
     key                         = "tf/tfstate"
-    region                      = "us-southeast-1"
+    region                      = "us-southeast"
     endpoints = {
       s3 = "https://us-southeast-1.linodeobjects.com"
     }
