@@ -15,7 +15,7 @@ on:
         default: 'false'
 
 env:
-  TF_VERSION: '1.6.0'
+  TF_VERSION: '1.14.1'
 
 jobs:
   drift-detection:
