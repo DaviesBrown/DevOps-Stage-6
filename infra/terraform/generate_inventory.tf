@@ -1,6 +1,6 @@
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/inventory.tpl", {
-    server_ip          = linode_instance.todo_app.ipv4[0]
+    server_ip = tolist(linode_instance.todo_app.ipv4)[0]
     ssh_user           = "root"
     ssh_private_key    = var.ssh_private_key_path
     domain             = var.domain
