@@ -1,1 +1,76 @@
+# Environment variables
 .env
+*.env
+!.env.example
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+!infra/terraform/*.tfvars.example
+infra/terraform/.terraform.tfstate.lock.info
+infra/terraform/crash.log
+infra/terraform/crash.*.log
+infra/terraform/override.tf
+infra/terraform/override.tf.json
+infra/terraform/*_override.tf
+infra/terraform/*_override.tf.json
+infra/terraform/plan_output.txt
+
+# Ansible
+infra/ansible/inventory/hosts.ini
+infra/ansible/group_vars/all.yml
+infra/ansible/*.retry
+infra/ansible/.ansible/
+/tmp/ansible_facts
+
+# SSH Keys
+*.pem
+*.ppk
+id_rsa*
+!*.pub
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+
+# Java
+target/
+*.class
+*.jar
+*.war
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Docker
+.dockerignore
