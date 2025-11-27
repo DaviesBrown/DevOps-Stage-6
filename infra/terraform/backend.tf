@@ -3,6 +3,8 @@ terraform {
     bucket = "todo-terraform-bucket"
     key    = "tf/tfstate"
     region = "us-southeast-1"
+    access_key = "2P0YIANJ2BF3SSP0N1P5"
+    secret_key = "0KTXAmMh1QBnqbvKgWbrEHqFerV7usEDHnKDRyc0"
 
     # required for S3-compatible backends
     use_path_style            = true
