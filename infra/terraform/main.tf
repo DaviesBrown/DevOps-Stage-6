@@ -72,7 +72,12 @@ resource "linode_firewall" "todo_app" {
 }
 
 resource "null_resource" "ansible_provision" {
-  depends_on = [linode_instance.todo_app, linode_firewall.todo_app]
+  depends_on = [
+    linode_instance.todo_app,
+    linode_firewall.todo_app,
+    local_file.ansible_inventory,
+    local_file.ansible_vars
+  ]
 
   triggers = {
     instance_id = linode_instance.todo_app.id
@@ -80,9 +85,9 @@ resource "null_resource" "ansible_provision" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOT
-      sleep 45
-      cd ../ansible && ansible-playbook -i inventory/hosts.ini playbook.yml
+    command = <<EOT
+      cd ../ansible
+      ansible-playbook -i ${local_file.ansible_inventory.filename} playbook.yml
     EOT
   }
 
@@ -90,3 +95,4 @@ resource "null_resource" "ansible_provision" {
     create_before_destroy = true
   }
 }
+
