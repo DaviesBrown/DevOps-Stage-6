@@ -72,14 +72,6 @@ resource "linode_firewall" "todo_app" {
 }
 
 resource "null_resource" "ansible_provision" {
-  depends_on = [linode_instance.todo_app, linode_firewall.todo_app]
-
-  triggers = {
-    instance_id = linode_instance.todo_app.id
-    always_run  = timestamp()
-  }
-
-  resource "null_resource" "ansible_provision" {
     depends_on = [
       linode_instance.todo_app,
       linode_firewall.todo_app,
@@ -102,5 +94,4 @@ resource "null_resource" "ansible_provision" {
     lifecycle {
       create_before_destroy = true
     }
-  }  
 }
