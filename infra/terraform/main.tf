@@ -1,3 +1,22 @@
+resource "linode_instance" "todo_app" {
+  label           = "todo-app-server"
+  image           = "linode/ubuntu22.04"
+  region          = var.linode_region
+  type            = var.linode_type
+  root_pass       = var.root_pass
+  authorized_keys = [var.ssh_public_key]
+  tags            = ["production", "todo-app", "terraform"]
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes = [
+      authorized_keys,
+      root_pass
+    ]
+    prevent_destroy = false
+  }
+}
+
 resource "linode_firewall" "todo_app" {
   label = "todo-app-firewall"
 
@@ -45,7 +64,7 @@ resource "linode_firewall" "todo_app" {
 
   outbound_policy = "ACCEPT"
 
-  linodes = [87739427]
+  linodes = [linode_instance.todo_app.id]
 
   lifecycle {
     create_before_destroy = true
