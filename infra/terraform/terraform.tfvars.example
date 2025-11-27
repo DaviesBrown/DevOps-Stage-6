@@ -1,0 +1,12 @@
+linode_token         = "your-linode-api-token"
+linode_region        = "us-southeast"
+linode_type          = "g6-standard-2"
+root_pass            = "YourStr0ng!P@ssw0rd123"
+ssh_public_key       = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQD... your-key-here"
+domain               = "your-domain.com"
+acme_email           = "your-email@example.com"
+jwt_secret           = "your-super-secret-jwt-key-min-32-characters"
+github_repo          = "https://github.com/username/repo-name.git"
+github_token         = "ghp_your_github_token"
+ssh_private_key_path = "~/.ssh/id_rsa"
+allowed_ssh_ips      = ["your.ip.address/32"]
