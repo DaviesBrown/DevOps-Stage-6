@@ -1,0 +1,77 @@
+---
+- name: Create application directory
+  file:
+    path: /opt/todo-app
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Check if repository exists
+  stat:
+    path: /opt/todo-app/.git
+  register: repo_exists
+
+- name: Clone repository
+  git:
+    repo: "{{ github_repo }}"
+    dest: /opt/todo-app
+    version: main
+    force: yes
+  when: not repo_exists.stat.exists
+
+- name: Pull latest changes
+  git:
+    repo: "{{ github_repo }}"
+    dest: /opt/todo-app
+    version: main
+    force: yes
+  register: git_pull
+  when: repo_exists.stat.exists
+
+- name: Create .env file from template
+  template:
+    src: .env.j2
+    dest: /opt/todo-app/.env
+    owner: root
+    group: root
+    mode: '0644'
+  register: env_file
+
+- name: Stop existing containers
+  command: docker compose down
+  args:
+    chdir: /opt/todo-app
+  ignore_errors: yes
+  when: git_pull.changed or env_file.changed
+
+- name: Pull latest images
+  command: docker compose pull
+  args:
+    chdir: /opt/todo-app
+  when: git_pull.changed or env_file.changed
+
+- name: Build and start containers
+  command: docker compose up -d --build
+  args:
+    chdir: /opt/todo-app
+  register: compose_result
+
+- name: Wait for services to be healthy
+  command: docker compose ps
+  args:
+    chdir: /opt/todo-app
+  register: services_status
+  until: services_status.rc == 0
+  retries: 10
+  delay: 10
+
+- name: Display running containers
+  command: docker compose ps
+  args:
+    chdir: /opt/todo-app
+  register: containers
+
+- name: Show container status
+  debug:
+    msg: "{{ containers.stdout_lines }}"
