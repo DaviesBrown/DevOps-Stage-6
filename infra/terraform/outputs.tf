@@ -5,7 +5,7 @@ output "instance_id" {
 
 output "public_ip" {
   description = "Public IP address"
-  value       = linode_instance.todo_app.ip_address
+  value       = linode_instance.todo_app.ipv4[0]
 }
 
 output "domain" {
@@ -15,7 +15,7 @@ output "domain" {
 
 output "ssh_command" {
   description = "SSH connection command"
-  value       = "ssh -i ${var.ssh_private_key_path} root@${linode_instance.todo_app.ip_address}"
+  value       = "ssh -i ${var.ssh_private_key_path} root@${linode_instance.todo_app.ipv4[0]}"
 }
 
 output "application_url" {
