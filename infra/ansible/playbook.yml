@@ -1,0 +1,9 @@
+---
+- name: Configure and Deploy TODO Application
+  hosts: todo_servers
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - dependencies
+    - deploy
