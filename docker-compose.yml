@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:latest
     container_name: traefik
     restart: unless-stopped
     command:
@@ -9,12 +9,12 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
     ports:
       - "80:80"
       - "443:443"
@@ -44,12 +44,10 @@ services:
       - todo-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.users-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/users`)"
+      - "traefik.http.routers.users-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/users`)"
       - "traefik.http.routers.users-api.entrypoints=websecure"
       - "traefik.http.routers.users-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.users-api.loadbalancer.server.port=8083"
-      - "traefik.http.middlewares.users-strip.stripprefix.prefixes=/api/users"
-      - "traefik.http.routers.users-api.middlewares=users-strip"
 
   auth-api:
     build:
@@ -67,12 +65,10 @@ services:
       - users-api
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.auth-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.auth-api.rule=Host(`${DOMAIN}`) && (PathPrefix(`/login`) || PathPrefix(`/auth`))"
       - "traefik.http.routers.auth-api.entrypoints=websecure"
       - "traefik.http.routers.auth-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.auth-api.loadbalancer.server.port=8081"
-      - "traefik.http.middlewares.auth-strip.stripprefix.prefixes=/api/auth"
-      - "traefik.http.routers.auth-api.middlewares=auth-strip"
 
   todos-api:
     build:
@@ -92,12 +88,10 @@ services:
       - redis
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.todos-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/todos`)"
+      - "traefik.http.routers.todos-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/todos`)"
       - "traefik.http.routers.todos-api.entrypoints=websecure"
       - "traefik.http.routers.todos-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.todos-api.loadbalancer.server.port=8082"
-      - "traefik.http.middlewares.todos-strip.stripprefix.prefixes=/api/todos"
-      - "traefik.http.routers.todos-api.middlewares=todos-strip"
 
   log-processor:
     build:
@@ -122,9 +116,9 @@ services:
     container_name: frontend
     restart: unless-stopped
     environment:
-      - PORT=8080
-      - AUTH_API_ADDRESS=https://${DOMAIN}/api/auth
-      - TODOS_API_ADDRESS=https://${DOMAIN}/api/todos
+      - PORT=80
+      - AUTH_API_ADDRESS=https://${DOMAIN}/login
+      - TODOS_API_ADDRESS=https://${DOMAIN}/todos
     networks:
       - todo-network
     depends_on:
@@ -135,7 +129,7 @@ services:
       - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.frontend.entrypoints=websecure"
       - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
 
 networks:
   todo-network:
