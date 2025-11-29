@@ -1,31 +1,358 @@
-#!/bin/bash
+name: Infrastructure Deployment
 
-set -e
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/terraform/**'
+      - 'infra/ansible/**'
+      - 'infra/scripts/**'
+  workflow_dispatch:
+    inputs:
+      auto_approve:
+        description: 'Auto approve terraform apply (true/false)'
+        required: false
+        default: 'false'
 
-cd infra/terraform
+env:
+  PROJ_PATH: /root/DevOps-Stage-6
+  TF_DIR: infra/terraform
+  ANSIBLE_DIR: infra/ansible
 
-echo "Running terraform plan to check for drift..."
-terraform plan -detailed-exitcode -out=tfplan 2>&1 | tee plan_output.txt
+jobs:
+  drift-detection:
+    name: Detect Infrastructure Drift
+    runs-on: ubuntu-latest
+    outputs:
+      drift_detected: ${{ steps.check-drift.outputs.drift_detected }}
+      drift_summary: ${{ steps.check-drift.outputs.drift_summary }}
 
-EXIT_CODE=${PIPESTATUS[0]}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-if [ $EXIT_CODE -eq 2 ]; then
-    echo "DRIFT_DETECTED=true" >> $GITHUB_ENV
-    echo "✋ Infrastructure drift detected!"
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Add provisioning server to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.PROVISION_SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Run Drift Detection on Provisioning Server
+        id: check-drift
+        continue-on-error: true
+        run: |
+          set +e
+          
+          # Create email notification script locally
+          cat > notify_drift.sh << 'NOTIFYSCRIPT'
+          #!/bin/bash
+          REPO="$1"
+          BRANCH="$2"
+          COMMIT="$3"
+          ACTOR="$4"
+          RUN_URL="$5"
+          
+          export SMTP_HOST="$6"
+          export SMTP_PORT="$7"
+          export SMTP_USER="$8"
+          export SMTP_PASSWORD="$9"
+          export ALERT_EMAIL="${10}"
+          
+          SUBJECT="🚨 Terraform Drift Detected - Approval Required"
+          BODY="Infrastructure drift has been detected in your Terraform configuration.
+
+          Repository: ${REPO}
+          Branch: ${BRANCH}
+          Commit: ${COMMIT}
+          Triggered by: ${ACTOR}
+
+          Please review the drift details and approve the deployment in GitHub Actions
+          Workflow run: ${RUN_URL}
+
+          The workflow is paused and waiting for your approval in the production environment
+
+          Check the plan_output.txt artifact for detailed changes"
+          
+          cd /root/DevOps-Stage-6/infra/scripts
+          ./send_email.sh "$SUBJECT" "$BODY"
+          NOTIFYSCRIPT
+          
+          chmod +x notify_drift.sh
+          
+          # Copy notification script to provisioning server
+          scp notify_drift.sh root@${{ secrets.PROVISION_SERVER_IP }}:/tmp/notify_drift.sh
+          
+          # Execute drift check on provisioning server
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} bash -s << 'ENDSSH'
+            set -e
+            
+            echo "===== Pulling Latest Repo ====="
+            cd /root/DevOps-Stage-6
+            git pull origin main
+            
+            echo "===== Running Drift Check Script ====="
+            cd /root/DevOps-Stage-6
+            
+            chmod +x infra/scripts/check_drift.sh infra/scripts/send_email.sh
+            
+            export TF_VAR_linode_token="${LINODE_TOKEN}"
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+            
+            # Create a dummy GITHUB_ENV file since the script writes to it
+            export GITHUB_ENV=/tmp/github_env_dummy
+            touch $GITHUB_ENV
+            
+            infra/scripts/check_drift.sh
+            CHECK_EXIT_CODE=$?
+            
+            rm -f $GITHUB_ENV
+            
+            if [ $CHECK_EXIT_CODE -eq 2 ]; then
+              echo "DRIFT_DETECTED: Sending email notification..."
+              chmod +x /tmp/notify_drift.sh
+              /tmp/notify_drift.sh \
+                "${GITHUB_REPO}" \
+                "${GITHUB_REF}" \
+                "${GITHUB_SHA}" \
+                "${GITHUB_ACTOR}" \
+                "${GITHUB_RUN_URL}" \
+                "${SMTP_HOST}" \
+                "${SMTP_PORT}" \
+                "${SMTP_USER}" \
+                "${SMTP_PASSWORD}" \
+                "${ALERT_EMAIL}"
+            fi
+            
+            exit $CHECK_EXIT_CODE
+          ENDSSH
+          
+          REMOTE_EXIT_CODE=$?
+          
+          if [ $REMOTE_EXIT_CODE -eq 2 ]; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+            
+            scp root@${{ secrets.PROVISION_SERVER_IP }}:/root/DevOps-Stage-6/infra/terraform/plan_output.txt ./plan_output.txt || echo "Could not retrieve plan output"
+            
+            if [ -f ./plan_output.txt ]; then
+              SUMMARY=$(tail -n 50 ./plan_output.txt || echo "See plan_output.txt artifact for details")
+              echo "drift_summary<<EOF" >> $GITHUB_OUTPUT
+              echo "$SUMMARY" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+            
+            echo "✅ Drift detected. Email sent from provisioning server."
+            exit 0
+          elif [ $REMOTE_EXIT_CODE -eq 0 ]; then
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+            echo "drift_summary=No infrastructure drift detected." >> $GITHUB_OUTPUT
+            echo "✅ No drift detected."
+            exit 0
+          else
+            echo "drift_detected=error" >> $GITHUB_OUTPUT
+            echo "drift_summary=Terraform plan failed. Check logs for details." >> $GITHUB_OUTPUT
+            echo "❌ Drift detection failed."
+            exit 1
+          fi
+        env:
+          LINODE_TOKEN: ${{ secrets.LINODE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.LINODE_OBJECT_STORAGE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LINODE_OBJECT_STORAGE_SECRET_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Upload Drift Plan Output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-drift-plan
+          path: plan_output.txt
+          if-no-files-found: ignore
+
+  await-approval:
+    name: Await Manual Approval
+    runs-on: ubuntu-latest
+    needs: drift-detection
+    if: needs.drift-detection.outputs.drift_detected == 'true'
+    environment:
+      name: production
     
-    # Extract changes summary
-    CHANGES=$(grep -A 50 "Terraform will perform" plan_output.txt || echo "Changes detected")
+    steps:
+      - name: Awaiting Approval
+        run: |
+          echo "🔔 Infrastructure drift detected!"
+          echo ""
+          echo "Drift Summary:"
+          echo "${{ needs.drift-detection.outputs.drift_summary }}"
+          echo ""
+          echo "⏸️  Workflow paused. Please review and approve in the GitHub UI to proceed."
+          echo ""
+          echo "An email notification has been sent with drift details."
+
+  terraform-apply:
+    name: Apply Infrastructure Changes
+    runs-on: ubuntu-latest
+    needs: [drift-detection, await-approval]
+    if: |
+      always() &&
+      needs.drift-detection.result == 'success' &&
+      (
+        needs.drift-detection.outputs.drift_detected == 'false' ||
+        needs.await-approval.result == 'success' ||
+        github.event.inputs.auto_approve == 'true'
+      )
     
-    echo "DRIFT_SUMMARY<<EOF" >> $GITHUB_ENV
-    echo "$CHANGES" >> $GITHUB_ENV
-    echo "EOF" >> $GITHUB_ENV
-    
-    exit 2
-elif [ $EXIT_CODE -eq 0 ]; then
-    echo "DRIFT_DETECTED=false" >> $GITHUB_ENV
-    echo "✅ No infrastructure drift detected"
-    exit 0
-else
-    echo "❌ Terraform plan failed"
-    exit 1
-fi
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Add provisioning server to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.PROVISION_SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Run Terraform Apply & Ansible on Provisioning Server
+        run: |
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} << 'EOF'
+            set -e
+            
+            echo "===== Pulling Latest Repo ====="
+            cd /root/DevOps-Stage-6
+            git pull origin main
+            
+            echo "===== Running Terraform Apply ====="
+            cd infra/terraform
+            
+            export TF_VAR_linode_token="${LINODE_TOKEN}"
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+            
+            terraform init -input=false
+            terraform apply -auto-approve
+            
+            echo "===== Running Ansible Deployment ====="
+            cd ../ansible
+            ansible-playbook -i inventory/hosts.ini playbook.yml
+            
+            echo "✅ Infrastructure deployment completed successfully"
+          EOF
+        env:
+          LINODE_TOKEN: ${{ secrets.LINODE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.LINODE_OBJECT_STORAGE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LINODE_OBJECT_STORAGE_SECRET_KEY }}
+
+      - name: Send Success Notification
+        if: success()
+        run: |
+          # Create success notification script
+          cat > notify_success.sh << 'SUCCESSSCRIPT'
+          #!/bin/bash
+          export SMTP_HOST="$1"
+          export SMTP_PORT="$2"
+          export SMTP_USER="$3"
+          export SMTP_PASSWORD="$4"
+          export ALERT_EMAIL="$5"
+          
+          REPO="$6"
+          BRANCH="$7"
+          COMMIT="$8"
+          ACTOR="$9"
+          RUN_URL="${10}"
+          
+          SUBJECT="✅ Infrastructure Deployment Successful"
+          BODY="Infrastructure has been successfully deployed.
+
+          Repository: ${REPO}
+          Branch: ${BRANCH}
+          Commit: ${COMMIT}
+          Triggered by: ${ACTOR}
+
+          Deployment completed on: $(date)
+
+          View details: ${RUN_URL}"
+          
+          cd /root/DevOps-Stage-6/infra/scripts
+          ./send_email.sh "$SUBJECT" "$BODY"
+          SUCCESSSCRIPT
+          
+          chmod +x notify_success.sh
+          scp notify_success.sh root@${{ secrets.PROVISION_SERVER_IP }}:/tmp/notify_success.sh
+          
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} "/tmp/notify_success.sh \
+            '${{ secrets.SMTP_HOST }}' \
+            '${{ secrets.SMTP_PORT }}' \
+            '${{ secrets.SMTP_USER }}' \
+            '${{ secrets.SMTP_PASSWORD }}' \
+            '${{ secrets.ALERT_EMAIL }}' \
+            '${{ github.repository }}' \
+            '${{ github.ref_name }}' \
+            '${{ github.sha }}' \
+            '${{ github.actor }}' \
+            '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'"
+
+      - name: Send Failure Notification
+        if: failure()
+        run: |
+          # Create failure notification script
+          cat > notify_failure.sh << 'FAILURESCRIPT'
+          #!/bin/bash
+          export SMTP_HOST="$1"
+          export SMTP_PORT="$2"
+          export SMTP_USER="$3"
+          export SMTP_PASSWORD="$4"
+          export ALERT_EMAIL="$5"
+          
+          REPO="$6"
+          BRANCH="$7"
+          COMMIT="$8"
+          ACTOR="$9"
+          RUN_URL="${10}"
+          
+          SUBJECT="❌ Infrastructure Deployment Failed"
+          BODY="Infrastructure deployment has failed.
+
+          Repository: ${REPO}
+          Branch: ${BRANCH}
+          Commit: ${COMMIT}
+          Triggered by: ${ACTOR}
+
+          Failed at: $(date)
+
+          Please check the logs for details: ${RUN_URL}"
+          
+          cd /root/DevOps-Stage-6/infra/scripts
+          ./send_email.sh "$SUBJECT" "$BODY"
+          FAILURESCRIPT
+          
+          chmod +x notify_failure.sh
+          scp notify_failure.sh root@${{ secrets.PROVISION_SERVER_IP }}:/tmp/notify_failure.sh
+          
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} "/tmp/notify_failure.sh \
+            '${{ secrets.SMTP_HOST }}' \
+            '${{ secrets.SMTP_PORT }}' \
+            '${{ secrets.SMTP_USER }}' \
+            '${{ secrets.SMTP_PASSWORD }}' \
+            '${{ secrets.ALERT_EMAIL }}' \
+            '${{ github.repository }}' \
+            '${{ github.ref_name }}' \
+            '${{ github.sha }}' \
+            '${{ github.actor }}' \
+            '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'"
