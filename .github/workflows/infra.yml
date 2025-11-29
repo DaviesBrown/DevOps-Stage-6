@@ -51,59 +51,35 @@ jobs:
           # Create email notification script locally
           cat > notify_drift.sh << 'NOTIFYSCRIPT'
           #!/bin/bash
-          set -e
-          
           REPO="$1"
           BRANCH="$2"
           COMMIT="$3"
           ACTOR="$4"
           RUN_URL="$5"
-          SMTP_HOST_ARG="$6"
-          SMTP_PORT_ARG="$7"
-          SMTP_USER_ARG="$8"
-          SMTP_PASSWORD_ARG="$9"
-          ALERT_EMAIL_ARG="${10}"
           
-          echo "DEBUG: Email notification script starting..."
-          
-          # Export environment variables for send_email.sh
-          export SMTP_HOST="${SMTP_HOST_ARG}"
-          export SMTP_PORT="${SMTP_PORT_ARG}"
-          export SMTP_USER="${SMTP_USER_ARG}"
-          export SMTP_PASSWORD="${SMTP_PASSWORD_ARG}"
-          export ALERT_EMAIL="${ALERT_EMAIL_ARG}"
-          
-          echo "DEBUG: SMTP_HOST=${SMTP_HOST}"
-          echo "DEBUG: SMTP_PORT=${SMTP_PORT}"
-          echo "DEBUG: SMTP_USER=${SMTP_USER}"
-          echo "DEBUG: ALERT_EMAIL=${ALERT_EMAIL}"
+          export SMTP_HOST="$6"
+          export SMTP_PORT="$7"
+          export SMTP_USER="$8"
+          export SMTP_PASSWORD="$9"
+          export ALERT_EMAIL="${10}"
           
           SUBJECT="🚨 Terraform Drift Detected - Approval Required"
           BODY="Infrastructure drift has been detected in your Terraform configuration.
 
-Repository: ${REPO}
-Branch: ${BRANCH}
-Commit: ${COMMIT}
-Triggered by: ${ACTOR}
+          Repository: ${REPO}
+          Branch: ${BRANCH}
+          Commit: ${COMMIT}
+          Triggered by: ${ACTOR}
 
-Please review the drift details and approve the deployment in GitHub Actions
-Workflow run: ${RUN_URL}
+          Please review the drift details and approve the deployment in GitHub Actions
+          Workflow run: ${RUN_URL}
 
-The workflow is paused and waiting for your approval in the production environment
+          The workflow is paused and waiting for your approval in the production environment
 
-Check the plan_output.txt artifact for detailed changes"
-          
-          if [ ! -f /root/DevOps-Stage-6/infra/scripts/send_email.sh ]; then
-            echo "ERROR: send_email.sh not found"
-            exit 1
-          fi
+          Check the plan_output.txt artifact for detailed changes"
           
           cd /root/DevOps-Stage-6/infra/scripts
-          echo "DEBUG: Calling send_email.sh..."
           ./send_email.sh "$SUBJECT" "$BODY"
-          SEND_EXIT=$?
-          echo "DEBUG: send_email.sh exit code: ${SEND_EXIT}"
-          exit $SEND_EXIT
           NOTIFYSCRIPT
           
           chmod +x notify_drift.sh
@@ -141,13 +117,6 @@ Check the plan_output.txt artifact for detailed changes"
             if [ $CHECK_EXIT_CODE -eq 2 ]; then
               echo "DRIFT_DETECTED: Sending email notification..."
               chmod +x /tmp/notify_drift.sh
-              
-              echo "DEBUG: About to call notification script with:"
-              echo "  REPO: ${GITHUB_REPO}"
-              echo "  BRANCH: ${GITHUB_REF}"
-              echo "  SMTP_HOST: ${SMTP_HOST}"
-              echo "  ALERT_EMAIL: ${ALERT_EMAIL}"
-              
               /tmp/notify_drift.sh \
                 "${GITHUB_REPO}" \
                 "${GITHUB_REF}" \
@@ -159,15 +128,6 @@ Check the plan_output.txt artifact for detailed changes"
                 "${SMTP_USER}" \
                 "${SMTP_PASSWORD}" \
                 "${ALERT_EMAIL}"
-              
-              EMAIL_EXIT_CODE=$?
-              echo "DEBUG: Email notification script exit code: ${EMAIL_EXIT_CODE}"
-              
-              if [ $EMAIL_EXIT_CODE -ne 0 ]; then
-                echo "WARNING: Email notification failed with exit code ${EMAIL_EXIT_CODE}"
-              else
-                echo "SUCCESS: Email notification sent successfully"
-              fi
             fi
             
             exit $CHECK_EXIT_CODE
@@ -307,37 +267,29 @@ Check the plan_output.txt artifact for detailed changes"
           # Create success notification script
           cat > notify_success.sh << 'SUCCESSSCRIPT'
           #!/bin/bash
-          set -e
+          export SMTP_HOST="$1"
+          export SMTP_PORT="$2"
+          export SMTP_USER="$3"
+          export SMTP_PASSWORD="$4"
+          export ALERT_EMAIL="$5"
           
-          SMTP_HOST_ARG="$1"
-          SMTP_PORT_ARG="$2"
-          SMTP_USER_ARG="$3"
-          SMTP_PASSWORD_ARG="$4"
-          ALERT_EMAIL_ARG="$5"
           REPO="$6"
           BRANCH="$7"
           COMMIT="$8"
           ACTOR="$9"
           RUN_URL="${10}"
           
-          # Export environment variables for send_email.sh
-          export SMTP_HOST="${SMTP_HOST_ARG}"
-          export SMTP_PORT="${SMTP_PORT_ARG}"
-          export SMTP_USER="${SMTP_USER_ARG}"
-          export SMTP_PASSWORD="${SMTP_PASSWORD_ARG}"
-          export ALERT_EMAIL="${ALERT_EMAIL_ARG}"
-          
           SUBJECT="✅ Infrastructure Deployment Successful"
           BODY="Infrastructure has been successfully deployed.
 
-Repository: ${REPO}
-Branch: ${BRANCH}
-Commit: ${COMMIT}
-Triggered by: ${ACTOR}
+          Repository: ${REPO}
+          Branch: ${BRANCH}
+          Commit: ${COMMIT}
+          Triggered by: ${ACTOR}
 
-Deployment completed on: $(date)
+          Deployment completed on: $(date)
 
-View details: ${RUN_URL}"
+          View details: ${RUN_URL}"
           
           cd /root/DevOps-Stage-6/infra/scripts
           ./send_email.sh "$SUBJECT" "$BODY"
@@ -364,37 +316,29 @@ View details: ${RUN_URL}"
           # Create failure notification script
           cat > notify_failure.sh << 'FAILURESCRIPT'
           #!/bin/bash
-          set -e
+          export SMTP_HOST="$1"
+          export SMTP_PORT="$2"
+          export SMTP_USER="$3"
+          export SMTP_PASSWORD="$4"
+          export ALERT_EMAIL="$5"
           
-          SMTP_HOST_ARG="$1"
-          SMTP_PORT_ARG="$2"
-          SMTP_USER_ARG="$3"
-          SMTP_PASSWORD_ARG="$4"
-          ALERT_EMAIL_ARG="$5"
           REPO="$6"
           BRANCH="$7"
           COMMIT="$8"
           ACTOR="$9"
           RUN_URL="${10}"
           
-          # Export environment variables for send_email.sh
-          export SMTP_HOST="${SMTP_HOST_ARG}"
-          export SMTP_PORT="${SMTP_PORT_ARG}"
-          export SMTP_USER="${SMTP_USER_ARG}"
-          export SMTP_PASSWORD="${SMTP_PASSWORD_ARG}"
-          export ALERT_EMAIL="${ALERT_EMAIL_ARG}"
-          
           SUBJECT="❌ Infrastructure Deployment Failed"
           BODY="Infrastructure deployment has failed.
 
-Repository: ${REPO}
-Branch: ${BRANCH}
-Commit: ${COMMIT}
-Triggered by: ${ACTOR}
+          Repository: ${REPO}
+          Branch: ${BRANCH}
+          Commit: ${COMMIT}
+          Triggered by: ${ACTOR}
 
-Failed at: $(date)
+          Failed at: $(date)
 
-Please check the logs for details: ${RUN_URL}"
+          Please check the logs for details: ${RUN_URL}"
           
           cd /root/DevOps-Stage-6/infra/scripts
           ./send_email.sh "$SUBJECT" "$BODY"
