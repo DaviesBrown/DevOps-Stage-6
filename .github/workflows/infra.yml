@@ -46,7 +46,7 @@ jobs:
           set +e
           
           # Execute drift check on provisioning server
-          ssh root@${{ secrets.PROVISION_SERVER_IP }} bash << 'ENDSSH'
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} bash << "ENDSSH"
             set -e
             
             echo "===== Pulling Latest Repo ====="
