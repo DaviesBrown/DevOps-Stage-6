@@ -51,6 +51,7 @@ jobs:
           # Create email notification script locally
           cat > notify_drift.sh << 'NOTIFYSCRIPT'
           #!/bin/bash
+          set -e
           REPO="$1"
           BRANCH="$2"
           COMMIT="$3"
@@ -62,6 +63,12 @@ jobs:
           export SMTP_USER="$8"
           export SMTP_PASSWORD="$9"
           export ALERT_EMAIL="${10}"
+          
+          echo "DEBUG: Email notification script starting..."
+          echo "DEBUG: SMTP_HOST=${SMTP_HOST}"
+          echo "DEBUG: SMTP_PORT=${SMTP_PORT}"
+          echo "DEBUG: SMTP_USER=${SMTP_USER}"
+          echo "DEBUG: ALERT_EMAIL=${ALERT_EMAIL}"
           
           SUBJECT="🚨 Terraform Drift Detected - Approval Required"
           BODY="Infrastructure drift has been detected in your Terraform configuration.
@@ -78,8 +85,17 @@ jobs:
 
           Check the plan_output.txt artifact for detailed changes"
           
+          if [ ! -f /root/DevOps-Stage-6/infra/scripts/send_email.sh ]; then
+            echo "ERROR: send_email.sh not found at /root/DevOps-Stage-6/infra/scripts/send_email.sh"
+            exit 1
+          fi
+          
           cd /root/DevOps-Stage-6/infra/scripts
+          echo "DEBUG: Calling send_email.sh..."
           ./send_email.sh "$SUBJECT" "$BODY"
+          SEND_EXIT=$?
+          echo "DEBUG: send_email.sh exit code: ${SEND_EXIT}"
+          exit $SEND_EXIT
           NOTIFYSCRIPT
           
           chmod +x notify_drift.sh
@@ -117,6 +133,13 @@ jobs:
             if [ $CHECK_EXIT_CODE -eq 2 ]; then
               echo "DRIFT_DETECTED: Sending email notification..."
               chmod +x /tmp/notify_drift.sh
+              
+              echo "DEBUG: About to call notification script with:"
+              echo "  REPO: ${GITHUB_REPO}"
+              echo "  BRANCH: ${GITHUB_REF}"
+              echo "  SMTP_HOST: ${SMTP_HOST}"
+              echo "  ALERT_EMAIL: ${ALERT_EMAIL}"
+              
               /tmp/notify_drift.sh \
                 "${GITHUB_REPO}" \
                 "${GITHUB_REF}" \
@@ -128,6 +151,15 @@ jobs:
                 "${SMTP_USER}" \
                 "${SMTP_PASSWORD}" \
                 "${ALERT_EMAIL}"
+              
+              EMAIL_EXIT_CODE=$?
+              echo "DEBUG: Email notification script exit code: ${EMAIL_EXIT_CODE}"
+              
+              if [ $EMAIL_EXIT_CODE -ne 0 ]; then
+                echo "WARNING: Email notification failed with exit code ${EMAIL_EXIT_CODE}"
+              else
+                echo "SUCCESS: Email notification sent successfully"
+              fi
             fi
             
             exit $CHECK_EXIT_CODE
