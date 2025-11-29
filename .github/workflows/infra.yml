@@ -105,7 +105,7 @@ Triggered by: ${GITHUB_ACTOR}
 Please review the drift details and approve the deployment in GitHub Actions.
 Workflow run: ${GITHUB_RUN_URL}
 
-The workflow is paused and waiting for your approval in the production environment.
+The workflow is paused and waiting for your approval in the production environment
 
 Check the plan_output.txt artifact for detailed changes."
               
