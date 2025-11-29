@@ -49,11 +49,21 @@ jobs:
           LINODE_TOKEN: ${{ secrets.LINODE_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.LINODE_OBJECT_STORAGE_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.LINODE_OBJECT_STORAGE_SECRET_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set +e
           
           # Execute drift check on provisioning server using existing scripts
-          ssh root@${{ secrets.PROVISION_SERVER_IP }} << 'REMOTE'
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} bash << 'REMOTE'
             set -e
             
             echo "===== Pulling Latest Repo ====="
@@ -78,27 +88,28 @@ jobs:
             if [ $CHECK_EXIT_CODE -eq 2 ]; then
               echo "DRIFT_DETECTED: Sending email notification..."
               
-              export SMTP_HOST="${{ secrets.SMTP_HOST }}"
-              export SMTP_PORT="${{ secrets.SMTP_PORT }}"
-              export SMTP_USER="${{ secrets.SMTP_USER }}"
-              export SMTP_PASSWORD="${{ secrets.SMTP_PASSWORD }}"
-              export ALERT_EMAIL="${{ secrets.ALERT_EMAIL }}"
+              export SMTP_HOST="${SMTP_HOST}"
+              export SMTP_PORT="${SMTP_PORT}"
+              export SMTP_USER="${SMTP_USER}"
+              export SMTP_PASSWORD="${SMTP_PASSWORD}"
+              export ALERT_EMAIL="${ALERT_EMAIL}"
               
-              ../scripts/send_email.sh \
-                "🚨 Terraform Drift Detected - Approval Required" \
-                "Infrastructure drift has been detected in your Terraform configuration.
+              SUBJECT="🚨 Terraform Drift Detected - Approval Required"
+              BODY="Infrastructure drift has been detected in your Terraform configuration.
 
-Repository: ${{ github.repository }}
-Branch: ${{ github.ref_name }}
-Commit: ${{ github.sha }}
-Triggered by: ${{ github.actor }}
+Repository: ${GITHUB_REPO}
+Branch: ${GITHUB_REF}
+Commit: ${GITHUB_SHA}
+Triggered by: ${GITHUB_ACTOR}
 
 Please review the drift details and approve the deployment in GitHub Actions.
-Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+Workflow run: ${GITHUB_RUN_URL}
 
 The workflow is paused and waiting for your approval in the production environment.
 
 Check the plan_output.txt artifact for detailed changes."
+              
+              ../scripts/send_email.sh "${SUBJECT}" "${BODY}"
             fi
             
             exit $CHECK_EXIT_CODE
