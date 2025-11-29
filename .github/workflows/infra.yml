@@ -86,7 +86,7 @@ jobs:
 
           EXIT_CODE=$?
 
-          echo "📝 check_drift.sh exit code: $CHECK_EXIT_CODE"
+          echo "📝 check_drift.sh exit code: $EXIT_CODE"
 
           echo $EXIT_CODE
           echo 1234567890
