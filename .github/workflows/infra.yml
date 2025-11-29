@@ -1,4 +1,4 @@
-name: Infrastructure Deployment
+name: Infrastructure Deployment (Provisioning Server)
 
 on:
   push:
@@ -25,57 +25,59 @@ jobs:
       drift_detected: ${{ steps.check.outputs.drift_detected }}
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Terraform Init
+      - name: Setup SSH key
         run: |
-          cd infra/terraform
-          terraform init
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LINODE_OBJECT_STORAGE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LINODE_OBJECT_STORAGE_SECRET_KEY }}
+          mkdir -p ~/.ssh
+          printf "%s\n" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.PROVISION_SERVER_IP }}" >> ~/.ssh/known_hosts
 
-      - name: Check for Drift
+      - name: Run Drift Detection on Provisioning Server
         id: check
-        run: |
-          chmod +x infra/scripts/check_drift.sh
-          infra/scripts/check_drift.sh
-        env:
-          TF_VAR_linode_token: ${{ secrets.LINODE_TOKEN }}
         continue-on-error: true
-
-      - name: Send Drift Alert Email
-        if: env.DRIFT_DETECTED == 'true'
         run: |
-          chmod +x infra/scripts/send_email.sh
-          infra/scripts/send_email.sh \
-            "🚨 Infrastructure Drift Detected - Action Required" \
-            "Infrastructure drift has been detected in the TODO application.
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} /bin/bash -s <<'REMOTE'
+            set -e
 
-          Repository: ${{ github.repository }}
-          Branch: ${{ github.ref_name }}
-          Commit: ${{ github.sha }}
-          Triggered by: ${{ github.actor }}
+            echo "===== Pulling Latest Repo ====="
+            cd /root/DevOps-Stage-6
+            git fetch --all --prune
+            git reset --hard origin/main
 
-          Drift Summary:
-          ${{ env.DRIFT_SUMMARY }}
+            echo "===== Running Drift Detection ====="
+            chmod +x infra/scripts/check_drift.sh
+            infra/scripts/check_drift.sh || EXIT_CODE=$?
 
-          Please review the changes and approve the deployment:
-          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            # If drift detected, send email using the provisioning server's script
+            if [ "$EXIT_CODE" == "2" ]; then
+              echo "✋ Drift detected, sending alert email..."
+              chmod +x infra/scripts/send_email.sh
+              /root/DevOps-Stage-6/infra/scripts/send_email.sh \
+                "🚨 Infrastructure Drift Detected" \
+                "Infrastructure drift detected on provisioning server.
 
-          This deployment is paused and awaiting manual approval."
+Repo: https://github.com/DaviesBrown/DevOps-Stage-6
+Branch: main
+Triggered by: GitHub Actions
+
+Please review and approve deployment.
+
+Drift summary:
+$(cat infra/terraform/plan_output.txt | head -n 200)
+"
+            fi
+
+            exit ${EXIT_CODE:-0}
+REMOTE
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          LINODE_TOKEN: ${{ secrets.LINODE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.LINODE_OBJECT_STORAGE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.LINODE_OBJECT_STORAGE_SECRET_KEY }}
 
   await-approval:
     name: Wait for Manual Approval
@@ -86,11 +88,11 @@ jobs:
       name: production
     
     steps:
-      - name: Wait for approval
+      - name: Await approval
         run: echo "⏳ Waiting for manual approval before applying changes..."
 
   terraform-apply:
-    name: Apply Infrastructure Changes
+    name: Apply Infrastructure & Run Ansible
     runs-on: ubuntu-latest
     needs: [drift-detection, await-approval]
     if: |
@@ -99,7 +101,61 @@ jobs:
        needs.await-approval.result == 'success')
     
     steps:
-      - name: Checkout code
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.PROVISION_SERVER_IP }}" >> ~/.ssh/known_hosts
+
+      - name: Run Terraform Apply & Ansible on Provisioning Server
+        run: |
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} /bin/bash -s <<'REMOTE'
+            set -e
+
+            echo "===== Pulling Latest Repo ====="
+            cd /root/DevOps-Stage-6
+            git fetch --all --prune
+            git reset --hard origin/main
+
+            echo "===== Running Terraform Apply ====="
+            cd infra/terraform
+            export TF_VAR_linode_token="${LINODE_TOKEN}"
+            export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
+            export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
+
+            terraform init -input=false
+            terraform plan -out=tfplan.out
+            terraform apply -auto-approve tfplan.out
+
+            echo "===== Running Ansible Deployment ====="
+            cd ../ansible
+            ansible-playbook -i inventory/hosts.ini playbook.yml
+REMOTE
+        env:
+          LINODE_TOKEN: ${{ secrets.LINODE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.LINODE_OBJECT_STORAGE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_OBJECT_STORAGE_SECRET_KEY }}
+
+      - name: Send Success Notification
+        if: success()
+        run: |
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} "chmod +x /root/DevOps-Stage-6/infra/scripts/send_email.sh && /root/DevOps-Stage-6/infra/scripts/send_email.sh '✅ Infrastructure Deployment Successful' 'Infrastructure has been successfully deployed on Linode.
+
+Repo: https://github.com/DaviesBrown/DevOps-Stage-6
+Branch: main
+Commit: $GITHUB_SHA
+'"
+
+      - name: Send Failure Notification
+        if: failure()
+        run: |
+          ssh root@${{ secrets.PROVISION_SERVER_IP }} "chmod +x /root/DevOps-Stage-6/infra/scripts/send_email.sh && /root/DevOps-Stage-6/infra/scripts/send_email.sh '❌ Infrastructure Deployment Failed' 'Infrastructure deployment has failed.
+
+Repo: https://github.com/DaviesBrown/DevOps-Stage-6
+Branch: main
+Commit: $GITHUB_SHA
+'"
         uses: actions/checkout@v4
 
       - name: Setup Terraform
