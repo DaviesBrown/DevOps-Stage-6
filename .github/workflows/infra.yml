@@ -94,8 +94,8 @@ jobs:
               export SMTP_PASSWORD="${SMTP_PASSWORD}"
               export ALERT_EMAIL="${ALERT_EMAIL}"
               
-              SUBJECT="🚨 Terraform Drift Detected - Approval Required"
-              BODY="Infrastructure drift has been detected in your Terraform configuration.
+              cat > /tmp/drift_email.txt <<EMAILBODY
+Infrastructure drift has been detected in your Terraform configuration.
 
 Repository: ${GITHUB_REPO}
 Branch: ${GITHUB_REF}
@@ -105,11 +105,13 @@ Triggered by: ${GITHUB_ACTOR}
 Please review the drift details and approve the deployment in GitHub Actions.
 Workflow run: ${GITHUB_RUN_URL}
 
-The workflow is paused and waiting for your approval in the production environment
+The workflow is paused and waiting for your approval in the production environment.
 
-Check the plan_output.txt artifact for detailed changes."
+Check the plan_output.txt artifact for detailed changes.
+EMAILBODY
               
-              ../scripts/send_email.sh "${SUBJECT}" "${BODY}"
+              ../scripts/send_email.sh "🚨 Terraform Drift Detected - Approval Required" "$(cat /tmp/drift_email.txt)"
+              rm -f /tmp/drift_email.txt
             fi
             
             exit $CHECK_EXIT_CODE
