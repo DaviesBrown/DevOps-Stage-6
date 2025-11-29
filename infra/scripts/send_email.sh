@@ -22,7 +22,7 @@ ${BODY}
 "
 
 # Send email using curl
-echo "$EMAIL_MESSAGE" | curl -v --ssl-reqd \
+echo "$EMAIL_MESSAGE" | curl --ssl-reqd \
     --url "smtps://${SMTP_HOST}:${SMTP_PORT}" \
     --user "${SMTP_USER}:${SMTP_PASSWORD}" \
     --mail-from "${SMTP_USER}" \
