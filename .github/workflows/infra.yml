@@ -80,7 +80,8 @@ jobs:
 
           EXIT_CODE=$?
 
-          echo EXIT_CODE
+          echo $EXIT_CODE
+          echo 1234567890
 
           rm -f $GITHUB_ENV
 
