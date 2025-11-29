@@ -78,12 +78,14 @@ jobs:
 
           infra/scripts/check_drift.sh
 
-          CHECK_EXIT_CODE=$?
+          EXIT_CODE=$?
+
+          echo EXIT_CODE
 
           rm -f $GITHUB_ENV
 
 
-          if [ $CHECK_EXIT_CODE -eq 2 ]; then
+          if [ $EXIT_CODE -eq 2 ]; then
             echo "===== DRIFT DETECTED: Sending Email ====="
             echo "DEBUG: Current directory: $(pwd)"
             echo "DEBUG: Listing infra/scripts:"
@@ -149,7 +151,7 @@ jobs:
           fi
 
 
-          exit $CHECK_EXIT_CODE
+          exit $EXIT_CODE
 
           ENDSSH
 
