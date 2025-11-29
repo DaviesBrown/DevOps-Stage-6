@@ -61,10 +61,11 @@ jobs:
 
 
           echo "===== Running Drift Check Script ====="
-
+          echo "===== Checking Scripts ====="
+          ls -la infra/scripts/ || echo "Warning: Could not list infra/scripts/"
           chmod +x infra/scripts/check_drift.sh infra/scripts/send_email.sh
 
-
+          echo "ran drift detection"
           export TF_VAR_linode_token="${LINODE_TOKEN}"
 
           export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
@@ -75,10 +76,11 @@ jobs:
 
           touch $GITHUB_ENV
 
-
+          echo "🚀 About to run check_drift.sh..."
           infra/scripts/check_drift.sh
 
           EXIT_CODE=$?
+          echo "📝 check_drift.sh exit code: $CHECK_EXIT_CODE"
 
           echo $EXIT_CODE
           echo 1234567890
