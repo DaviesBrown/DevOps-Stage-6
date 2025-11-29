@@ -93,19 +93,26 @@ jobs:
             
             echo "===== Pulling Latest Repo ====="
             cd /root/DevOps-Stage-6
-            git pull origin main
+            git fetch --all --prune
+            git reset --hard origin/main
             
             echo "===== Running Drift Check Script ====="
-            cd infra/terraform
+            cd /root/DevOps-Stage-6
             
-            chmod +x ../scripts/check_drift.sh ../scripts/send_email.sh
+            chmod +x infra/scripts/check_drift.sh infra/scripts/send_email.sh
             
             export TF_VAR_linode_token="${LINODE_TOKEN}"
             export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID}"
             export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY}"
             
-            ../scripts/check_drift.sh
+            # Create a dummy GITHUB_ENV file since the script writes to it
+            export GITHUB_ENV=/tmp/github_env_dummy
+            touch $GITHUB_ENV
+            
+            infra/scripts/check_drift.sh
             CHECK_EXIT_CODE=$?
+            
+            rm -f $GITHUB_ENV
             
             if [ $CHECK_EXIT_CODE -eq 2 ]; then
               echo "DRIFT_DETECTED: Sending email notification..."
@@ -230,7 +237,8 @@ jobs:
             
             echo "===== Pulling Latest Repo ====="
             cd /root/DevOps-Stage-6
-            git pull origin main
+            git fetch --all --prune
+            git reset --hard origin/main
             
             echo "===== Running Terraform Apply ====="
             cd infra/terraform
