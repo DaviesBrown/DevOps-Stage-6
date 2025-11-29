@@ -69,11 +69,7 @@ jobs:
 
           if [ "${{ job.status }}" == "success" ]; then
             SUBJECT="✅ Deployment Successful"
-            BODY="Deployment completed successfully for commit: ${{ github.sha }}"
-          else
-            SUBJECT="❌ Deployment Failed"
-            BODY="Deployment FAILED for commit: ${{ github.sha }}"
-          fi
+            BODY="Deployment completed successfully for commit: ${{ github.sha }}
 
           infra/scripts/send_email.sh "$SUBJECT" "$BODY"
           URL: https://${{ secrets.DOMAIN }}
